@@ -1,355 +1,396 @@
-﻿<script setup>
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+<script setup>
+import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { submitPracticeAnswer } from '@/api/practice'
-import { getQuestionDetail, getQuestionList } from '@/api/question'
 import SectionCard from '@/components/SectionCard.vue'
-import { getStoredUser } from '@/utils/auth'
-import { getLatestPracticeRecord, saveLatestPracticeRecord } from '@/utils/practice'
+import { getQuestionList } from '@/api/question'
+import {
+  extractQuestionSummary,
+  extractQuestionTrack,
+  formatDifficulty,
+  formatQuestionType,
+} from '@/utils/question'
 
 const route = useRoute()
 const router = useRouter()
 
 const questions = ref([])
-const question = ref(null)
-const currentUser = ref(getStoredUser())
-const latestRecord = ref(getLatestPracticeRecord())
-const loadingList = ref(false)
-const loadingDetail = ref(false)
-const submitting = ref(false)
+const loading = ref(false)
 const pageError = ref('')
-const submitError = ref('')
-const successMessage = ref('')
-const answerDraft = ref('')
+const searchKeyword = ref('')
+const activeType = ref('ALL')
+const activeDifficulty = ref('ALL')
+const currentPage = ref(1)
 
-const selectedId = computed(() => String(route.params.id || ''))
-const canSubmit = computed(() => {
-  return Boolean(currentUser.value && question.value && answerDraft.value.trim() && !submitting.value)
-})
+const pageSize = 12
 
-function refreshUser() {
-  currentUser.value = getStoredUser()
+const typeOptions = [
+  { value: 'ALL', label: '全部题目' },
+  { value: 'ALGORITHM', label: '算法题' },
+  { value: 'INTERVIEW', label: '面试题' },
+]
+
+const difficultyOptions = [
+  { value: 'ALL', label: '全部难度' },
+  { value: 'EASY', label: '简单' },
+  { value: 'MEDIUM', label: '中等' },
+  { value: 'HARD', label: '困难' },
+]
+
+function parsePage(value) {
+  const page = Number.parseInt(value || '1', 10)
+  return Number.isFinite(page) && page > 0 ? page : 1
 }
 
-function draftKey(id) {
-  return `practice-draft-${id}`
+function normalizeFilter(value, allowList, fallback) {
+  return allowList.includes(value) ? value : fallback
 }
 
-function formatSubmittedAt(value) {
-  if (!value) {
-    return '刚刚'
+function buildQueryObject() {
+  const query = {}
+
+  if (searchKeyword.value.trim()) {
+    query.keyword = searchKeyword.value.trim()
   }
 
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) {
-    return value
+  if (activeType.value !== 'ALL') {
+    query.type = activeType.value
   }
 
-  return new Intl.DateTimeFormat('zh-CN', {
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-  }).format(date)
+  if (activeDifficulty.value !== 'ALL') {
+    query.difficulty = activeDifficulty.value
+  }
+
+  if (currentPage.value > 1) {
+    query.page = String(currentPage.value)
+  }
+
+  return query
 }
 
-function loadDraft(id) {
-  answerDraft.value = id ? localStorage.getItem(draftKey(id)) || '' : ''
+function isSameQuery(left, right) {
+  const leftEntries = Object.entries(left)
+    .filter(([, value]) => value !== undefined && value !== null && value !== '')
+    .map(([key, value]) => [key, String(Array.isArray(value) ? value[0] : value)])
+    .sort(([a], [b]) => a.localeCompare(b))
+
+  const rightEntries = Object.entries(right)
+    .filter(([, value]) => value !== undefined && value !== null && value !== '')
+    .map(([key, value]) => [key, String(value)])
+    .sort(([a], [b]) => a.localeCompare(b))
+
+  return JSON.stringify(leftEntries) === JSON.stringify(rightEntries)
 }
 
-function saveDraft() {
-  if (!selectedId.value) {
+function syncRouteQuery() {
+  const nextQuery = buildQueryObject()
+  if (isSameQuery(route.query, nextQuery)) {
     return
   }
 
-  localStorage.setItem(draftKey(selectedId.value), answerDraft.value)
-  successMessage.value = '草稿已保存在当前浏览器中。'
-  submitError.value = ''
+  router.replace({ path: '/practice', query: nextQuery })
 }
 
-function clearDraft() {
-  answerDraft.value = ''
-  successMessage.value = ''
-  if (selectedId.value) {
-    localStorage.removeItem(draftKey(selectedId.value))
+function applyRouteQuery(query) {
+  const allowedTypes = typeOptions.map((item) => item.value)
+  const allowedDifficulties = difficultyOptions.map((item) => item.value)
+  searchKeyword.value = typeof query.keyword === 'string' ? query.keyword : ''
+  activeType.value = normalizeFilter(query.type, allowedTypes, 'ALL')
+  activeDifficulty.value = normalizeFilter(query.difficulty, allowedDifficulties, 'ALL')
+  currentPage.value = parsePage(query.page)
+}
+
+const filteredQuestions = computed(() => {
+  const keyword = searchKeyword.value.trim().toLowerCase()
+
+  return questions.value.filter((question) => {
+    const matchesType = activeType.value === 'ALL' || question.type === activeType.value
+    const matchesDifficulty = activeDifficulty.value === 'ALL' || question.difficulty === activeDifficulty.value
+    const matchesKeyword =
+      !keyword ||
+      question.title.toLowerCase().includes(keyword) ||
+      extractQuestionTrack(question.content).toLowerCase().includes(keyword)
+
+    return matchesType && matchesDifficulty && matchesKeyword
+  })
+})
+
+const totalPages = computed(() => {
+  return Math.max(1, Math.ceil(filteredQuestions.value.length / pageSize))
+})
+
+const pagedQuestions = computed(() => {
+  const start = (currentPage.value - 1) * pageSize
+  return filteredQuestions.value.slice(start, start + pageSize)
+})
+
+const visiblePageNumbers = computed(() => {
+  const pages = []
+  const start = Math.max(1, currentPage.value - 2)
+  const end = Math.min(totalPages.value, start + 4)
+  const normalizedStart = Math.max(1, end - 4)
+
+  for (let page = normalizedStart; page <= end; page += 1) {
+    pages.push(page)
   }
+
+  return pages
+})
+
+const catalogStats = computed(() => {
+  const algorithmCount = questions.value.filter((item) => item.type === 'ALGORITHM').length
+  const interviewCount = questions.value.filter((item) => item.type === 'INTERVIEW').length
+
+  return [
+    { label: '题库总量', value: questions.value.length, hint: '当前可练习题目' },
+    { label: '算法题', value: algorithmCount, hint: '偏思路与复杂度' },
+    { label: '面试题', value: interviewCount, hint: '偏表达与理解' },
+    { label: '当前结果', value: filteredQuestions.value.length, hint: '筛选后可见题目' },
+  ]
+})
+
+const activeTypeLabel = computed(() => {
+  return typeOptions.find((item) => item.value === activeType.value)?.label || '全部题目'
+})
+
+function updateFilters(options = {}) {
+  if (Object.prototype.hasOwnProperty.call(options, 'keyword')) {
+    searchKeyword.value = options.keyword
+  }
+
+  if (Object.prototype.hasOwnProperty.call(options, 'type')) {
+    activeType.value = options.type
+  }
+
+  if (Object.prototype.hasOwnProperty.call(options, 'difficulty')) {
+    activeDifficulty.value = options.difficulty
+  }
+
+  if (Object.prototype.hasOwnProperty.call(options, 'page')) {
+    currentPage.value = options.page
+  }
+
+  syncRouteQuery()
+}
+
+function handleKeywordInput(event) {
+  updateFilters({ keyword: event.target.value, page: 1 })
+}
+
+function handleTypeChange(value) {
+  updateFilters({ type: value, page: 1 })
+}
+
+function handleDifficultyChange(event) {
+  updateFilters({ difficulty: event.target.value, page: 1 })
+}
+
+function clearFilters() {
+  updateFilters({ keyword: '', type: 'ALL', difficulty: 'ALL', page: 1 })
+}
+
+function goToPage(page) {
+  const normalizedPage = Math.min(Math.max(page, 1), totalPages.value)
+  updateFilters({ page: normalizedPage })
+}
+
+function openQuestion(questionId) {
+  router.push({
+    path: `/practice/${questionId}`,
+    query: route.query,
+  })
 }
 
 async function loadQuestions() {
-  loadingList.value = true
+  loading.value = true
   pageError.value = ''
 
   try {
-    const data = await getQuestionList()
-    questions.value = data
-
-    if (!route.params.id && data.length) {
-      router.replace(`/practice/${data[0].id}`)
-    }
+    questions.value = await getQuestionList()
   } catch (error) {
     pageError.value = error.message
   } finally {
-    loadingList.value = false
-  }
-}
-
-async function loadQuestion(id) {
-  if (!id) {
-    question.value = null
-    return
-  }
-
-  loadingDetail.value = true
-  pageError.value = ''
-  successMessage.value = ''
-  submitError.value = ''
-
-  try {
-    question.value = await getQuestionDetail(id)
-    loadDraft(id)
-  } catch (error) {
-    question.value = null
-    pageError.value = error.message
-  } finally {
-    loadingDetail.value = false
-  }
-}
-
-function selectQuestion(id) {
-  router.push(`/practice/${id}`)
-}
-
-async function handleSubmit() {
-  submitError.value = ''
-  successMessage.value = ''
-
-  if (!currentUser.value) {
-    submitError.value = '请先登录，再提交你的答案。'
-    return
-  }
-
-  if (!question.value) {
-    submitError.value = '请先选择一道题目。'
-    return
-  }
-
-  if (!answerDraft.value.trim()) {
-    submitError.value = '请先填写答案内容。'
-    return
-  }
-
-  submitting.value = true
-
-  try {
-    const record = await submitPracticeAnswer({
-      username: currentUser.value.username,
-      questionId: question.value.id,
-      answerContent: answerDraft.value.trim(),
-    })
-
-    latestRecord.value = record
-    saveLatestPracticeRecord(record)
-    localStorage.removeItem(draftKey(String(record.questionId)))
-    answerDraft.value = record.answerContent
-    successMessage.value = '答案已提交，正在跳转到复盘页。'
-
-    router.push({
-      path: '/review',
-      query: {
-        recordId: String(record.id),
-      },
-    })
-  } catch (error) {
-    submitError.value = error.message
-  } finally {
-    submitting.value = false
+    loading.value = false
   }
 }
 
 watch(
-  () => route.params.id,
-  (id) => {
-    if (id) {
-      loadQuestion(id)
-    }
+  () => route.query,
+  (query) => {
+    applyRouteQuery(query)
   },
   { immediate: true },
 )
 
-onMounted(() => {
-  loadQuestions()
-  window.addEventListener('auth-changed', refreshUser)
-  window.addEventListener('storage', refreshUser)
+watch(totalPages, (value) => {
+  if (currentPage.value > value) {
+    currentPage.value = value
+    syncRouteQuery()
+  }
 })
 
-onBeforeUnmount(() => {
-  window.removeEventListener('auth-changed', refreshUser)
-  window.removeEventListener('storage', refreshUser)
+onMounted(() => {
+  loadQuestions()
 })
 </script>
 
 <template>
   <div class="page-stack">
-    <section class="workspace-grid">
+    <section class="practice-page-head panel-surface">
+      <div>
+        <p class="eyebrow">刷题目录</p>
+        <h2>先选题，再进入单题作答</h2>
+        <p class="hero-text practice-head-text">
+          题库先按算法题和面试题分类展示，只保留摘要信息。你先在这里选题，进入作答页后再集中答题，提交后自动跳转 AI 分析。
+        </p>
+      </div>
+
+      <div class="catalog-stat-strip">
+        <article v-for="item in catalogStats" :key="item.label" class="catalog-stat-card">
+          <span>{{ item.label }}</span>
+          <strong>{{ item.value }}</strong>
+          <small>{{ item.hint }}</small>
+        </article>
+      </div>
+    </section>
+
+    <section class="practice-catalog-layout">
       <SectionCard
-        class="question-rail"
-        eyebrow="Question List"
-        title="题目目录"
-        description="左侧题库来自当前后端接口。"
+        class="catalog-sidebar"
+        eyebrow="题目分类"
+        title="按方向筛选"
+        description="先缩小范围，再分页查看题目。"
+      >
+        <div class="catalog-tabs">
+          <button
+            v-for="item in typeOptions"
+            :key="item.value"
+            type="button"
+            class="catalog-tab"
+            :class="{ active: activeType === item.value }"
+            @click="handleTypeChange(item.value)"
+          >
+            <span>{{ item.label }}</span>
+          </button>
+        </div>
+
+        <label class="editor-field">
+          <span>难度筛选</span>
+          <select :value="activeDifficulty" @change="handleDifficultyChange">
+            <option v-for="item in difficultyOptions" :key="item.value" :value="item.value">
+              {{ item.label }}
+            </option>
+          </select>
+        </label>
+
+        <div class="insight-card">
+          <span>当前结果</span>
+          <p>
+            当前筛选下共有 {{ filteredQuestions.length }} 道题，每页展示 {{ pageSize }} 道。
+            适合先浏览目录，再进入单题挑战。
+          </p>
+        </div>
+
+        <div class="insight-card">
+          <span>推荐节奏</span>
+          <p>先刷 3 到 5 道同类题，再统一回看 AI 点评，训练感会更强。</p>
+        </div>
+
+        <button type="button" class="button ghost-button small-button wide-button" @click="clearFilters">
+          重置筛选
+        </button>
+      </SectionCard>
+
+      <SectionCard
+        class="catalog-main"
+        eyebrow="题目列表"
+        title="分页刷题"
+        description="目录页只展示摘要，点击后进入单题作答。"
       >
         <template #actions>
-          <button
-            type="button"
-            class="button ghost-button small-button"
-            :disabled="loadingList"
-            @click="loadQuestions"
-          >
+          <button type="button" class="button ghost-button small-button" :disabled="loading" @click="loadQuestions">
             刷新题库
           </button>
         </template>
 
-        <p v-if="loadingList" class="muted-text">题目加载中...</p>
-        <p v-if="pageError" class="error-text">{{ pageError }}</p>
+        <div class="catalog-toolbar">
+          <label class="editor-field catalog-search">
+            <span>搜索题目</span>
+            <input
+              :value="searchKeyword"
+              type="text"
+              placeholder="按题目标题或方向关键词搜索"
+              @input="handleKeywordInput"
+            />
+          </label>
 
-        <div class="question-rail-list">
+          <div class="catalog-toolbar-meta">
+            <span class="tiny-pill">{{ activeTypeLabel }}</span>
+            <span class="tiny-pill accent-pill">第 {{ currentPage }} / {{ totalPages }} 页</span>
+          </div>
+        </div>
+
+        <p v-if="loading" class="muted-text">题库加载中...</p>
+        <p v-else-if="pageError" class="error-text">{{ pageError }}</p>
+
+        <div v-else-if="pagedQuestions.length" class="compact-list catalog-list">
+          <article v-for="item in pagedQuestions" :key="item.id" class="catalog-question-card">
+            <div class="catalog-card-head">
+              <div class="catalog-card-copy">
+                <div class="list-item-top">
+                  <strong>{{ item.title }}</strong>
+                  <span class="tiny-pill">#{{ item.id }}</span>
+                </div>
+                <p class="question-summary">{{ extractQuestionSummary(item) }}</p>
+              </div>
+
+              <button type="button" class="button primary-button small-button question-card-cta" @click="openQuestion(item.id)">
+                开始挑战
+              </button>
+            </div>
+
+            <div class="question-list-meta">
+              <span class="meta-pill bright">{{ formatQuestionType(item.type) }}</span>
+              <span class="meta-pill">{{ formatDifficulty(item.difficulty) }}</span>
+              <span class="meta-pill">方向 {{ extractQuestionTrack(item.content) }}</span>
+            </div>
+          </article>
+        </div>
+
+        <div v-else class="empty-panel">
+          当前筛选条件下没有题目，换一个分类或清空关键词后再试。
+        </div>
+
+        <div v-if="filteredQuestions.length" class="pager">
           <button
-            v-for="item in questions"
-            :key="item.id"
             type="button"
-            class="question-list-item"
-            :class="{ active: String(item.id) === selectedId }"
-            @click="selectQuestion(item.id)"
+            class="button ghost-button small-button pager-button"
+            :disabled="currentPage === 1"
+            @click="goToPage(currentPage - 1)"
           >
-            <div class="list-item-top">
-              <strong>{{ item.title }}</strong>
-              <span class="tiny-pill">#{{ item.id }}</span>
-            </div>
-            <p>{{ item.content }}</p>
-            <div class="pill-row">
-              <span class="meta-pill">{{ item.type }}</span>
-              <span class="meta-pill">{{ item.difficulty }}</span>
-            </div>
+            上一页
+          </button>
+
+          <button
+            v-for="page in visiblePageNumbers"
+            :key="page"
+            type="button"
+            class="pager-number"
+            :class="{ active: currentPage === page }"
+            @click="goToPage(page)"
+          >
+            {{ page }}
+          </button>
+
+          <button
+            type="button"
+            class="button ghost-button small-button pager-button"
+            :disabled="currentPage === totalPages"
+            @click="goToPage(currentPage + 1)"
+          >
+            下一页
           </button>
         </div>
       </SectionCard>
-
-      <SectionCard
-        class="question-main"
-        eyebrow="Question Detail"
-        title="题目详情"
-        description="中间区域用于阅读题目和组织作答思路。"
-      >
-        <div v-if="loadingDetail" class="empty-panel">题目详情加载中...</div>
-
-        <div v-else-if="question" class="question-detail-wrap">
-          <div class="question-header-row">
-            <div>
-              <p class="question-index">Question {{ question.id }}</p>
-              <h2>{{ question.title }}</h2>
-            </div>
-            <div class="pill-row">
-              <span class="meta-pill bright">{{ question.type }}</span>
-              <span class="meta-pill">{{ question.difficulty }}</span>
-            </div>
-          </div>
-
-          <p class="question-body">{{ question.content }}</p>
-
-          <div class="insight-grid">
-            <div class="insight-card">
-              <span>作答建议</span>
-              <p>先给结论，再补思路、复杂度和边界条件，方便后续复盘。</p>
-            </div>
-            <div class="insight-card">
-              <span>提交说明</span>
-              <p>现在支持把答案提交到后端，并在复盘页查看最近一次真实记录。</p>
-            </div>
-          </div>
-        </div>
-
-        <div v-else class="empty-panel">从左侧选择一道题开始练习。</div>
-      </SectionCard>
-
-      <div class="answer-column">
-        <SectionCard
-          eyebrow="Answer Zone"
-          title="作答区"
-          description="右侧支持草稿保存和正式提交。"
-        >
-          <p v-if="!currentUser" class="muted-text">
-            当前未登录。你仍然可以保存本地草稿，但提交答案前需要先登录。
-          </p>
-
-          <label class="editor-field">
-            <span>你的答案</span>
-            <textarea
-              v-model="answerDraft"
-              rows="13"
-              placeholder="在这里组织你的回答结构、思路、复杂度分析和关键边界条件。"
-            ></textarea>
-          </label>
-
-          <p v-if="submitError" class="error-text">{{ submitError }}</p>
-          <p v-if="successMessage" class="success-text">{{ successMessage }}</p>
-
-          <div class="editor-footer">
-            <small>{{ answerDraft.length }} 字</small>
-            <div class="action-row">
-              <button type="button" class="button ghost-button small-button" @click="clearDraft">清空</button>
-              <button type="button" class="button ghost-button small-button" @click="saveDraft">保存草稿</button>
-              <button
-                type="button"
-                class="button primary-button small-button"
-                :disabled="!canSubmit"
-                @click="handleSubmit"
-              >
-                {{ submitting ? '提交中...' : '提交答案' }}
-              </button>
-            </div>
-          </div>
-
-          <div v-if="!currentUser" class="action-row">
-            <button type="button" class="button ghost-button small-button" @click="router.push('/login')">
-              去登录
-            </button>
-          </div>
-        </SectionCard>
-
-        <SectionCard
-          eyebrow="Latest Submission"
-          title="最近一次提交"
-          description="这里展示当前浏览器保存的最近一条真实提交记录。"
-        >
-          <div v-if="latestRecord" class="record-list">
-            <article class="record-item">
-              <div class="record-item-main">
-                <strong>{{ latestRecord.questionTitle }}</strong>
-                <p>记录 #{{ latestRecord.id }} · {{ formatSubmittedAt(latestRecord.submittedAt) }}</p>
-              </div>
-              <span class="score-badge">{{ latestRecord.answerContent.length }}</span>
-            </article>
-
-            <div class="insight-card">
-              <span>答案摘要</span>
-              <p>
-                {{ latestRecord.answerContent.slice(0, 120) }}{{ latestRecord.answerContent.length > 120 ? '...' : '' }}
-              </p>
-            </div>
-
-            <div class="action-row">
-              <button
-                type="button"
-                class="button primary-button small-button"
-                @click="router.push({ path: '/review', query: { recordId: String(latestRecord.id) } })"
-              >
-                查看复盘
-              </button>
-            </div>
-          </div>
-
-          <div v-else class="empty-panel">提交第一条答案后，这里会显示最近一次记录。</div>
-        </SectionCard>
-      </div>
     </section>
   </div>
 </template>

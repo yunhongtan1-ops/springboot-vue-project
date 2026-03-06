@@ -1,9 +1,10 @@
 <script setup>
 import { reactive, ref } from 'vue'
-import { RouterLink, useRouter } from 'vue-router'
+import { RouterLink, useRoute, useRouter } from 'vue-router'
 import { login } from '@/api/auth'
 import { saveAuth } from '@/utils/auth'
 
+const route = useRoute()
 const router = useRouter()
 const loading = ref(false)
 const errorMessage = ref('')
@@ -13,6 +14,12 @@ const form = reactive({
   password: '',
 })
 
+function resolveRedirectTarget() {
+  return typeof route.query.redirect === 'string' && route.query.redirect.startsWith('/')
+    ? route.query.redirect
+    : '/profile'
+}
+
 async function handleLogin() {
   errorMessage.value = ''
   loading.value = true
@@ -21,7 +28,7 @@ async function handleLogin() {
     const data = await login(form)
     saveAuth(data)
     window.dispatchEvent(new Event('auth-changed'))
-    router.push('/profile')
+    router.push(resolveRedirectTarget())
   } catch (error) {
     errorMessage.value = error.message
   } finally {
@@ -33,31 +40,31 @@ async function handleLogin() {
 <template>
   <div class="auth-layout">
     <section class="auth-aside panel-surface">
-      <p class="eyebrow">Sign In</p>
+      <p class="eyebrow">账号登录</p>
       <h2>回到你的面试训练工作台</h2>
       <p class="hero-text">
-        登录后可以在用户中心看到本地保存的会话信息，并继续浏览新的刷题工作流页面。
+        登录后可以继续上次练习，查看最近复盘，并在个人中心同步你的真实训练记录。
       </p>
       <div class="auth-points">
         <div class="auth-point">
           <strong>01</strong>
-          <span>刷题页保留后端题库接口</span>
+          <span>继续刷题，沿用之前保存的思路和草稿。</span>
         </div>
         <div class="auth-point">
           <strong>02</strong>
-          <span>AI 点评页先展示高保真占位结构</span>
+          <span>直接查看最近一次提交对应的 AI 点评。</span>
         </div>
         <div class="auth-point">
           <strong>03</strong>
-          <span>后续可逐步接入真实点评与进度数据</span>
+          <span>在学习进度和个人中心里追踪训练节奏。</span>
         </div>
       </div>
     </section>
 
     <section class="auth-panel panel-surface">
-      <p class="eyebrow">Auth</p>
+      <p class="eyebrow">欢迎回来</p>
       <h2>登录</h2>
-      <p class="section-note">调用接口：POST /api/auth/login</p>
+      <p v-if="route.query.redirect" class="section-note">登录成功后会返回你刚才要访问的页面。</p>
 
       <form class="auth-form" @submit.prevent="handleLogin">
         <label class="editor-field">
@@ -73,7 +80,7 @@ async function handleLogin() {
         <p v-if="errorMessage" class="error-text">{{ errorMessage }}</p>
 
         <button type="submit" class="button primary-button wide-button" :disabled="loading">
-          {{ loading ? '登录中...' : '登录进入平台' }}
+          {{ loading ? '登录中...' : '登录并进入平台' }}
         </button>
       </form>
 

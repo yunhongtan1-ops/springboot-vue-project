@@ -5,14 +5,16 @@ public class UserVO {
     private Long id;
     private String username;
     private String nickname;
+    private String role;
 
     public UserVO() {
     }
 
-    public UserVO(Long id, String username, String nickname) {
+    public UserVO(Long id, String username, String nickname, String role) {
         this.id = id;
         this.username = username;
         this.nickname = nickname;
+        this.role = role;
     }
 
     public Long getId() {
@@ -37,5 +39,13 @@ public class UserVO {
 
     public void setNickname(String nickname) {
         this.nickname = nickname;
+    }
+
+    public String getRole() {
+        return role;
+    }
+
+    public void setRole(String role) {
+        this.role = role;
     }
 }

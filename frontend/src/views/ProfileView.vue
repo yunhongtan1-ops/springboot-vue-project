@@ -1,4 +1,4 @@
-﻿<script setup>
+<script setup>
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { RouterLink } from 'vue-router'
 import SectionCard from '@/components/SectionCard.vue'
@@ -40,7 +40,7 @@ async function loadHistory() {
   loading.value = true
 
   try {
-    history.value = await getPracticeHistory(currentUser.value.username)
+    history.value = await getPracticeHistory()
   } catch (error) {
     history.value = []
     errorMessage.value = error.message
@@ -58,7 +58,7 @@ const profileName = computed(() => {
 
 const profileSubline = computed(() => {
   if (!currentUser.value) {
-    return '登录后可以查看自己的真实练习记录。'
+    return '登录后可以查看自己的练习记录和复盘入口。'
   }
 
   return `用户名：${currentUser.value.username}`
@@ -109,7 +109,7 @@ onBeforeUnmount(() => {
       <div class="profile-main-card">
         <div class="profile-avatar">{{ profileName.slice(0, 1).toUpperCase() }}</div>
         <div>
-          <p class="eyebrow">User Center</p>
+          <p class="eyebrow">用户中心</p>
           <h2>{{ profileName }}</h2>
           <p class="hero-text">{{ profileSubline }}</p>
         </div>
@@ -126,7 +126,7 @@ onBeforeUnmount(() => {
 
     <SectionCard
       v-if="!currentUser"
-      eyebrow="Profile"
+      eyebrow="个人中心"
       title="个人中心"
       description="登录后会显示你的提交摘要、最近题目和复盘入口。"
     >
@@ -134,7 +134,7 @@ onBeforeUnmount(() => {
     </SectionCard>
 
     <section v-else class="content-grid three-cols">
-      <SectionCard eyebrow="Summary" title="练习摘要" description="来自后端的真实提交记录。">
+      <SectionCard eyebrow="练习摘要" title="训练概览" description="基于最近提交汇总你的练习情况。">
         <div v-if="loading" class="empty-panel">练习记录加载中...</div>
 
         <ul v-else class="detail-list compact-list">
@@ -142,7 +142,7 @@ onBeforeUnmount(() => {
         </ul>
       </SectionCard>
 
-      <SectionCard eyebrow="Questions" title="最近练习题目" description="按最近提交去重展示。">
+      <SectionCard eyebrow="最近题目" title="近期练习题目" description="按最近提交去重展示。">
         <div v-if="loading" class="empty-panel">练习记录加载中...</div>
 
         <ul v-else-if="recentQuestions.length" class="detail-list compact-list">
@@ -154,7 +154,7 @@ onBeforeUnmount(() => {
         <div v-else class="empty-panel">还没有题目练习记录。</div>
       </SectionCard>
 
-      <SectionCard eyebrow="Submissions" title="最近提交" description="可直接跳到对应复盘页。">
+      <SectionCard eyebrow="最近提交" title="复盘入口" description="可直接跳到对应复盘页。">
         <div v-if="loading" class="empty-panel">练习记录加载中...</div>
 
         <div v-else-if="recentSubmissions.length" class="record-list compact-records">

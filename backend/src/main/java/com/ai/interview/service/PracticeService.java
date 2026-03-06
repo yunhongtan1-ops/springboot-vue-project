@@ -18,40 +18,43 @@ public class PracticeService {
     private final PracticeRecordMapper practiceRecordMapper;
     private final UserMapper userMapper;
     private final QuestionMapper questionMapper;
+    private final PracticeReviewService practiceReviewService;
 
     public PracticeService(
             PracticeRecordMapper practiceRecordMapper,
             UserMapper userMapper,
-            QuestionMapper questionMapper
+            QuestionMapper questionMapper,
+            PracticeReviewService practiceReviewService
     ) {
         this.practiceRecordMapper = practiceRecordMapper;
         this.userMapper = userMapper;
         this.questionMapper = questionMapper;
+        this.practiceReviewService = practiceReviewService;
     }
 
-    public PracticeRecordVO submitAnswer(PracticeSubmitRequest request) {
-        if (request == null) {
-            throw new IllegalArgumentException("Request body cannot be empty");
+    public PracticeRecordVO submitAnswer(String username, PracticeSubmitRequest request) {
+        if (username == null || username.isBlank()) {
+            throw new IllegalArgumentException("用户名不能为空");
         }
-        if (request.getUsername() == null || request.getUsername().isBlank()) {
-            throw new IllegalArgumentException("Username cannot be empty");
+        if (request == null) {
+            throw new IllegalArgumentException("请求体不能为空");
         }
         if (request.getQuestionId() == null) {
-            throw new IllegalArgumentException("Question id cannot be empty");
+            throw new IllegalArgumentException("题目编号不能为空");
         }
         if (request.getAnswerContent() == null || request.getAnswerContent().isBlank()) {
-            throw new IllegalArgumentException("Answer content cannot be empty");
+            throw new IllegalArgumentException("答案内容不能为空");
         }
 
-        String username = request.getUsername().trim();
-        User user = userMapper.findByUsername(username);
+        String normalizedUsername = username.trim();
+        User user = userMapper.findByUsername(normalizedUsername);
         if (user == null) {
-            throw new IllegalArgumentException("User not found");
+            throw new IllegalArgumentException("用户不存在");
         }
 
         Question question = questionMapper.findById(request.getQuestionId());
         if (question == null) {
-            throw new IllegalArgumentException("Question not found");
+            throw new IllegalArgumentException("题目不存在");
         }
 
         PracticeRecord practiceRecord = new PracticeRecord();
@@ -60,19 +63,21 @@ public class PracticeService {
         practiceRecord.setAnswerContent(request.getAnswerContent().trim());
         practiceRecordMapper.save(practiceRecord);
 
-        return practiceRecordMapper.findById(practiceRecord.getId());
+        PracticeRecordVO savedRecord = practiceRecordMapper.findById(practiceRecord.getId());
+        practiceReviewService.requestReview(savedRecord.getId());
+        return savedRecord;
     }
 
     public List<PracticeRecordVO> getHistoryByUsername(String username) {
         if (username == null || username.isBlank()) {
-            throw new IllegalArgumentException("Username cannot be empty");
+            throw new IllegalArgumentException("用户名不能为空");
         }
 
         User user = userMapper.findByUsername(username.trim());
         if (user == null) {
-            throw new IllegalArgumentException("User not found");
+            throw new IllegalArgumentException("用户不存在");
         }
 
-        return practiceRecordMapper.findByUsername(username.trim());
+        return practiceRecordMapper.findByUserId(user.getId());
     }
 }

@@ -8,16 +8,18 @@ public class User {
     private String username;
     private String password;
     private String nickname;
+    private UserRole role;
     private LocalDateTime createdAt;
 
     public User() {
     }
 
-    public User(Long id, String username, String password, String nickname, LocalDateTime createdAt) {
+    public User(Long id, String username, String password, String nickname, UserRole role, LocalDateTime createdAt) {
         this.id = id;
         this.username = username;
         this.password = password;
         this.nickname = nickname;
+        this.role = role;
         this.createdAt = createdAt;
     }
 
@@ -51,6 +53,14 @@ public class User {
 
     public void setNickname(String nickname) {
         this.nickname = nickname;
+    }
+
+    public UserRole getRole() {
+        return role;
+    }
+
+    public void setRole(UserRole role) {
+        this.role = role;
     }
 
     public LocalDateTime getCreatedAt() {

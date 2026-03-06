@@ -1,4 +1,4 @@
-﻿<script setup>
+<script setup>
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import MetricCard from '@/components/MetricCard.vue'
 import SectionCard from '@/components/SectionCard.vue'
@@ -38,6 +38,18 @@ function startOfWeek(date) {
   return result
 }
 
+function getLocalDateKey(value) {
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) {
+    return ''
+  }
+
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
 async function loadHistory() {
   errorMessage.value = ''
 
@@ -49,7 +61,7 @@ async function loadHistory() {
   loading.value = true
 
   try {
-    history.value = await getPracticeHistory(currentUser.value.username)
+    history.value = await getPracticeHistory()
   } catch (error) {
     history.value = []
     errorMessage.value = error.message
@@ -68,10 +80,10 @@ const metrics = computed(() => {
   const weekCount = records.filter((item) => new Date(item.submittedAt) >= weekStart).length
 
   return [
-    { label: '累计提交', value: String(total), hint: '真实练习记录', tone: 'primary' },
+    { label: '累计提交', value: String(total), hint: '已完成的真实提交次数', tone: 'primary' },
     { label: '本周提交', value: String(weekCount), hint: '按当前周统计', tone: 'violet' },
-    { label: '覆盖题目', value: String(uniqueQuestions), hint: '去重后的题目数', tone: 'cyan' },
-    { label: '平均字数', value: String(avgAnswerLength), hint: '每次答案平均长度', tone: 'default' },
+    { label: '覆盖题目', value: String(uniqueQuestions), hint: '去重后的题目数量', tone: 'cyan' },
+    { label: '平均字数', value: String(avgAnswerLength), hint: '每次作答的平均长度', tone: 'default' },
   ]
 })
 
@@ -82,14 +94,8 @@ const trendData = computed(() => {
   return Array.from({ length: 7 }, (_, index) => {
     const day = new Date(today)
     day.setDate(today.getDate() - (6 - index))
-    const dayKey = day.toISOString().slice(0, 10)
-    const count = history.value.filter((item) => {
-      const submitted = new Date(item.submittedAt)
-      if (Number.isNaN(submitted.getTime())) {
-        return false
-      }
-      return submitted.toISOString().slice(0, 10) === dayKey
-    }).length
+    const dayKey = getLocalDateKey(day)
+    const count = history.value.filter((item) => getLocalDateKey(item.submittedAt) === dayKey).length
 
     return {
       label: `${day.getMonth() + 1}/${day.getDate()}`,
@@ -127,9 +133,9 @@ onBeforeUnmount(() => {
 
     <SectionCard
       v-else
-      eyebrow="Progress"
+      eyebrow="学习进度"
       title="练习进度"
-      description="登录后即可查看真实提交趋势和最近练习记录。"
+      description="登录后即可查看最近 7 天提交趋势和历史记录。"
     >
       <div class="empty-panel">当前未登录，进度页暂时没有可展示的数据。</div>
     </SectionCard>
@@ -137,7 +143,7 @@ onBeforeUnmount(() => {
     <p v-if="errorMessage" class="error-text">{{ errorMessage }}</p>
 
     <section v-if="currentUser" class="content-grid two-cols">
-      <SectionCard eyebrow="Trend" title="最近 7 天提交趋势" description="柱状图展示每天的提交次数。">
+      <SectionCard eyebrow="提交趋势" title="最近 7 天提交趋势" description="柱状图展示最近 7 天每天的提交次数。">
         <div v-if="loading" class="empty-panel">练习记录加载中...</div>
 
         <div v-else class="trend-chart">
@@ -151,7 +157,7 @@ onBeforeUnmount(() => {
         </div>
       </SectionCard>
 
-      <SectionCard eyebrow="Recent Work" title="最近提交记录" description="当前展示最近 6 条真实提交。">
+      <SectionCard eyebrow="最近记录" title="最近提交记录" description="按时间倒序展示最近 6 次提交。">
         <div v-if="loading" class="empty-panel">练习记录加载中...</div>
 
         <div v-else-if="recentRecords.length" class="record-list">

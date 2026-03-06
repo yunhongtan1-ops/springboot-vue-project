@@ -20,6 +20,6 @@ public interface PracticeRecordMapper {
     @Select("SELECT pr.id, u.username AS username, pr.question_id AS questionId, q.title AS questionTitle, pr.answer_content AS answerContent, pr.created_at AS submittedAt FROM practice_records pr INNER JOIN users u ON pr.user_id = u.id INNER JOIN questions q ON pr.question_id = q.id WHERE pr.id = #{id}")
     PracticeRecordVO findById(@Param("id") Long id);
 
-    @Select("SELECT pr.id, u.username AS username, pr.question_id AS questionId, q.title AS questionTitle, pr.answer_content AS answerContent, pr.created_at AS submittedAt FROM practice_records pr INNER JOIN users u ON pr.user_id = u.id INNER JOIN questions q ON pr.question_id = q.id WHERE u.username = #{username} ORDER BY pr.created_at DESC, pr.id DESC")
-    List<PracticeRecordVO> findByUsername(@Param("username") String username);
+    @Select("SELECT pr.id, u.username AS username, pr.question_id AS questionId, q.title AS questionTitle, pr.answer_content AS answerContent, pr.created_at AS submittedAt FROM practice_records pr INNER JOIN users u ON pr.user_id = u.id INNER JOIN questions q ON pr.question_id = q.id WHERE pr.user_id = #{userId} ORDER BY pr.created_at DESC, pr.id DESC")
+    List<PracticeRecordVO> findByUserId(@Param("userId") Long userId);
 }

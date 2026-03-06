@@ -31,7 +31,7 @@ public class QuestionService {
     public QuestionVO getQuestionById(Long id) {
         Question question = questionMapper.findById(id);
         if (question == null) {
-            throw new IllegalArgumentException("Question not found");
+            throw new IllegalArgumentException("题目不存在");
         }
         return toQuestionVO(question);
     }
@@ -45,7 +45,7 @@ public class QuestionService {
     public QuestionVO updateQuestion(Long id, QuestionSaveRequest request) {
         Question existingQuestion = questionMapper.findById(id);
         if (existingQuestion == null) {
-            throw new IllegalArgumentException("Question not found");
+            throw new IllegalArgumentException("题目不存在");
         }
 
         Question question = buildQuestionFromRequest(id, request);
@@ -56,7 +56,7 @@ public class QuestionService {
     public void deleteQuestion(Long id) {
         Question existingQuestion = questionMapper.findById(id);
         if (existingQuestion == null) {
-            throw new IllegalArgumentException("Question not found");
+            throw new IllegalArgumentException("题目不存在");
         }
 
         questionMapper.deleteById(id);
@@ -64,19 +64,19 @@ public class QuestionService {
 
     private Question buildQuestionFromRequest(Long id, QuestionSaveRequest request) {
         if (request == null) {
-            throw new IllegalArgumentException("Request body cannot be empty");
+            throw new IllegalArgumentException("请求体不能为空");
         }
         if (request.getTitle() == null || request.getTitle().isBlank()) {
-            throw new IllegalArgumentException("Question title cannot be empty");
+            throw new IllegalArgumentException("题目标题不能为空");
         }
         if (request.getContent() == null || request.getContent().isBlank()) {
-            throw new IllegalArgumentException("Question content cannot be empty");
+            throw new IllegalArgumentException("题目内容不能为空");
         }
         if (request.getType() == null || request.getType().isBlank()) {
-            throw new IllegalArgumentException("Question type cannot be empty");
+            throw new IllegalArgumentException("题目类型不能为空");
         }
         if (request.getDifficulty() == null || request.getDifficulty().isBlank()) {
-            throw new IllegalArgumentException("Question difficulty cannot be empty");
+            throw new IllegalArgumentException("题目难度不能为空");
         }
 
         Question question = new Question();

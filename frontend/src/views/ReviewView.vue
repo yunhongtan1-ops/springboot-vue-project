@@ -1,8 +1,8 @@
-﻿<script setup>
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+<script setup>
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { RouterLink, useRoute } from 'vue-router'
 import SectionCard from '@/components/SectionCard.vue'
-import { getPracticeHistory } from '@/api/practice'
+import { getPracticeHistory, getPracticeReview } from '@/api/practice'
 import { getStoredUser } from '@/utils/auth'
 import { getLatestPracticeRecord } from '@/utils/practice'
 
@@ -11,8 +11,19 @@ const route = useRoute()
 const currentUser = ref(getStoredUser())
 const history = ref([])
 const fallbackRecord = ref(getLatestPracticeRecord())
+const practiceReview = ref(null)
 const loading = ref(false)
+const reviewLoading = ref(false)
 const errorMessage = ref('')
+const reviewErrorMessage = ref('')
+
+const reviewStatusLabels = {
+  PENDING: '生成中',
+  SUCCESS: '已完成',
+  FAILED: '生成失败',
+}
+
+let reviewPollTimer = null
 
 function refreshUser() {
   currentUser.value = getStoredUser()
@@ -20,10 +31,24 @@ function refreshUser() {
   loadHistory()
 }
 
-function formatSubmittedAt(value) {
+function stopReviewPolling() {
+  if (reviewPollTimer) {
+    window.clearTimeout(reviewPollTimer)
+    reviewPollTimer = null
+  }
+}
+
+function queueReviewPolling(recordId) {
+  stopReviewPolling()
+  reviewPollTimer = window.setTimeout(() => {
+    loadReview(recordId, { silent: true })
+  }, 1500)
+}
+
+function formatDateTime(value) {
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) {
-    return value
+    return value || '刚刚'
   }
 
   return new Intl.DateTimeFormat('zh-CN', {
@@ -33,6 +58,10 @@ function formatSubmittedAt(value) {
     hour: '2-digit',
     minute: '2-digit',
   }).format(date)
+}
+
+function formatReviewStatus(status) {
+  return reviewStatusLabels[status] || status || '生成中'
 }
 
 async function loadHistory() {
@@ -46,12 +75,46 @@ async function loadHistory() {
   loading.value = true
 
   try {
-    history.value = await getPracticeHistory(currentUser.value.username)
+    history.value = await getPracticeHistory()
   } catch (error) {
     history.value = []
     errorMessage.value = error.message
   } finally {
     loading.value = false
+  }
+}
+
+async function loadReview(recordId, options = {}) {
+  const { silent = false } = options
+
+  if (!currentUser.value?.username || !recordId) {
+    practiceReview.value = null
+    stopReviewPolling()
+    return
+  }
+
+  if (!silent) {
+    reviewLoading.value = true
+  }
+  reviewErrorMessage.value = ''
+
+  try {
+    const data = await getPracticeReview(recordId)
+    practiceReview.value = data
+
+    if (data?.status === 'PENDING') {
+      queueReviewPolling(recordId)
+    } else {
+      stopReviewPolling()
+    }
+  } catch (error) {
+    practiceReview.value = null
+    reviewErrorMessage.value = error.message
+    stopReviewPolling()
+  } finally {
+    if (!silent) {
+      reviewLoading.value = false
+    }
   }
 }
 
@@ -77,60 +140,46 @@ const selectedRecord = computed(() => {
   return fallbackRecord.value
 })
 
-const reviewSnapshot = computed(() => {
-  if (!selectedRecord.value) {
-    return null
+const reviewStatusMeta = computed(() => {
+  const status = practiceReview.value?.status
+
+  if (status === 'SUCCESS') {
+    return {
+      title: 'AI 点评已生成',
+      description: '本次复盘已经整理出总结、亮点和改进建议。',
+    }
   }
 
-  const answer = selectedRecord.value.answerContent.trim()
-  const answerLength = answer.length
-  const paragraphCount = answer ? answer.split(/\n+/).filter(Boolean).length : 0
-  const mentionsComplexity = /O\(|复杂度|complexity/i.test(answer)
-  const mentionsEdgeCases = /边界|异常|null|空数组|空链表|corner|edge/i.test(answer)
-
-  let status = '需要补充'
-  let summary = '回答还比较短，建议先把解题思路和核心步骤讲完整。'
-
-  if (answerLength >= 240) {
-    status = '结构较完整'
-    summary = '本次回答已经有比较完整的展开，可以继续补强边界条件和表达顺序。'
-  } else if (answerLength >= 120) {
-    status = '基本成型'
-    summary = '已经具备主干内容，继续补充复杂度和关键边界会更像真实面试表达。'
+  if (status === 'FAILED') {
+    return {
+      title: 'AI 点评生成失败',
+      description: '这条记录已经提交成功，但点评任务未完成，可稍后重试。',
+    }
   }
-
-  const strengths = [
-    paragraphCount > 1 ? '答案已经拆成多段，阅读体验比一整段更好。' : '至少已经形成了一版完整回答，可以继续迭代。',
-    mentionsComplexity ? '你已经提到了复杂度，这是技术面试里非常重要的一部分。' : '你先把主思路写了出来，便于后续继续细化。',
-    answerLength >= 120 ? '回答长度已经足够支撑一次基础复盘。' : '当前答案简洁，适合继续往上补充关键细节。',
-  ]
-
-  const improvements = [
-    mentionsComplexity ? '下一步把为什么这样设计讲得更清楚，而不是只给出复杂度结论。' : '建议补上时间复杂度和空间复杂度分析。',
-    mentionsEdgeCases ? '边界情况已经提到了一部分，可以再补上异常输入或极端场景。' : '建议明确边界条件，例如空输入、重复元素或异常场景。',
-    paragraphCount > 1 ? '可以在每段开头先给一句结论，让表达更像口述作答。' : '建议把答案拆成“思路、步骤、复杂度、边界”四个层次。',
-  ]
-
-  const followUps = [
-    '如果面试官追问更优解或替代方案，你会怎么继续展开？',
-    '如果需要手写代码，变量命名和返回结构会如何组织？',
-    '如果输入规模继续增大，这个方案的瓶颈会出现在哪里？',
-  ]
 
   return {
-    status,
-    summary,
-    answerLength,
-    paragraphCount,
-    strengths,
-    improvements,
-    followUps,
+    title: 'AI 点评生成中',
+    description: '系统正在处理本次答案，页面会自动刷新结果。',
   }
 })
 
 const recentRecords = computed(() => {
   return history.value.filter((item) => item.id !== selectedRecord.value?.id).slice(0, 4)
 })
+
+watch(
+  () => selectedRecord.value?.id || null,
+  (recordId) => {
+    reviewErrorMessage.value = ''
+    practiceReview.value = null
+    stopReviewPolling()
+
+    if (recordId && currentUser.value?.username) {
+      loadReview(recordId)
+    }
+  },
+  { immediate: true },
+)
 
 onMounted(() => {
   loadHistory()
@@ -139,6 +188,7 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
+  stopReviewPolling()
   window.removeEventListener('auth-changed', refreshUser)
   window.removeEventListener('storage', refreshUser)
 })
@@ -148,32 +198,33 @@ onBeforeUnmount(() => {
   <div class="page-stack">
     <SectionCard
       v-if="!currentUser"
-      eyebrow="Review"
-      title="复盘页"
-      description="登录并提交答案后，这里会展示最近一次真实提交。"
+      eyebrow="复盘页"
+      title="查看提交复盘"
+      description="登录并提交答案后，这里会展示本次回答和 AI 点评。"
     >
       <div class="empty-panel">当前未登录，先去做题并提交一条答案。</div>
     </SectionCard>
 
     <p v-if="errorMessage" class="error-text">{{ errorMessage }}</p>
+    <p v-if="reviewErrorMessage" class="error-text">{{ reviewErrorMessage }}</p>
 
     <section v-if="currentUser" class="review-layout">
       <SectionCard
-        eyebrow="User Answer"
-        title="本次提交"
-        description="左侧展示真实提交内容，当前为 MVP 规则版复盘，不是 AI 评分。"
+        eyebrow="本次回答"
+        title="提交内容"
+        description="左侧展示本次提交，右侧展示系统生成的点评结果。"
       >
         <div v-if="loading && !selectedRecord" class="empty-panel">提交记录加载中...</div>
 
         <div v-else-if="selectedRecord" class="question-detail-wrap">
           <div class="question-header-row">
             <div>
-              <p class="question-index">Record #{{ selectedRecord.id }}</p>
+              <p class="question-index">记录 #{{ selectedRecord.id }}</p>
               <h2>{{ selectedRecord.questionTitle }}</h2>
             </div>
             <div class="pill-row">
               <span class="meta-pill">题目 #{{ selectedRecord.questionId }}</span>
-              <span class="meta-pill">{{ formatSubmittedAt(selectedRecord.submittedAt) }}</span>
+              <span class="meta-pill">{{ formatDateTime(selectedRecord.submittedAt) }}</span>
             </div>
           </div>
 
@@ -185,55 +236,95 @@ onBeforeUnmount(() => {
         <div v-else class="empty-panel">还没有可复盘的记录，先去做题页提交一次答案。</div>
       </SectionCard>
 
-      <div v-if="selectedRecord && reviewSnapshot" class="review-side">
+      <div v-if="selectedRecord" class="review-side">
         <SectionCard
-          eyebrow="Review Snapshot"
-          title="当前复盘概览"
-          description="基于答案长度和结构的规则版提示，后续可替换为 AI 点评结果。"
+          eyebrow="AI 点评"
+          :title="reviewStatusMeta.title"
+          :description="reviewStatusMeta.description"
         >
-          <div class="insight-grid">
-            <div class="insight-card">
-              <span>当前状态</span>
-              <p>{{ reviewSnapshot.status }}</p>
-            </div>
-            <div class="insight-card">
-              <span>答案长度</span>
-              <p>{{ reviewSnapshot.answerLength }} 字，{{ reviewSnapshot.paragraphCount }} 段</p>
-            </div>
-          </div>
+          <div v-if="reviewLoading && !practiceReview" class="empty-panel">AI 点评加载中...</div>
 
-          <p class="section-note">{{ reviewSnapshot.summary }}</p>
+          <template v-else>
+            <div class="insight-grid">
+              <div class="insight-card">
+                <span>当前状态</span>
+                <p>{{ formatReviewStatus(practiceReview?.status) }}</p>
+              </div>
+              <div class="insight-card">
+                <span>建议分数</span>
+                <p>{{ practiceReview?.overallScore ?? '--' }}</p>
+              </div>
+            </div>
+
+            <p v-if="practiceReview?.status === 'SUCCESS'" class="section-note">
+              {{ practiceReview.summary }}
+            </p>
+            <p v-else-if="practiceReview?.status === 'FAILED'" class="section-note">
+              {{ practiceReview.errorMessage || '点评任务执行失败，请稍后刷新页面。' }}
+            </p>
+            <p v-else class="section-note">
+              当前记录已经创建点评任务，页面会每 1.5 秒自动刷新一次结果。
+            </p>
+
+            <p v-if="practiceReview?.updatedAt" class="muted-text">
+              最近更新时间：{{ formatDateTime(practiceReview.updatedAt) }}
+            </p>
+          </template>
         </SectionCard>
 
-        <SectionCard eyebrow="Strengths" title="做得不错的地方" description="先保留这些表达习惯。">
+        <SectionCard
+          v-if="practiceReview?.status === 'SUCCESS' && practiceReview.highlightExcerpt"
+          eyebrow="答案摘录"
+          title="快速回看"
+          description="摘取一段关键内容，方便快速回顾本次回答。"
+        >
+          <p class="section-note">{{ practiceReview.highlightExcerpt }}</p>
+        </SectionCard>
+
+        <SectionCard
+          v-if="practiceReview?.status === 'SUCCESS' && practiceReview.strengths?.length"
+          eyebrow="亮点"
+          title="这次做得好的地方"
+          description="这些部分建议继续保留，并逐步形成稳定表达习惯。"
+        >
           <ul class="detail-list">
-            <li v-for="item in reviewSnapshot.strengths" :key="item">{{ item }}</li>
+            <li v-for="item in practiceReview.strengths" :key="item">{{ item }}</li>
           </ul>
         </SectionCard>
 
-        <SectionCard eyebrow="Improvements" title="下一步可以加强" description="继续补齐主流程中的薄弱点。">
+        <SectionCard
+          v-if="practiceReview?.status === 'SUCCESS' && practiceReview.improvements?.length"
+          eyebrow="改进点"
+          title="下一步可以加强的地方"
+          description="优先补齐这些部分，会更接近真实面试中的高质量回答。"
+        >
           <ul class="detail-list">
-            <li v-for="item in reviewSnapshot.improvements" :key="item">{{ item }}</li>
+            <li v-for="item in practiceReview.improvements" :key="item">{{ item }}</li>
           </ul>
         </SectionCard>
 
-        <SectionCard eyebrow="Follow-up" title="继续追问自己" description="这些问题适合你做二次复盘。">
+        <SectionCard
+          v-if="practiceReview?.status === 'SUCCESS' && practiceReview.followUps?.length"
+          eyebrow="追问建议"
+          title="继续追问自己"
+          description="可以把这些问题当成下一轮复盘的练习方向。"
+        >
           <ul class="detail-list">
-            <li v-for="item in reviewSnapshot.followUps" :key="item">{{ item }}</li>
+            <li v-for="item in practiceReview.followUps" :key="item">{{ item }}</li>
           </ul>
         </SectionCard>
 
         <SectionCard
           v-if="recentRecords.length"
-          eyebrow="Recent Records"
+          eyebrow="最近记录"
           title="切换其他提交"
-          description="这里展示最近几条历史记录。"
+          description="这里展示最近几条历史记录，可随时切换复盘。"
         >
           <div class="record-list compact-records">
             <article v-for="item in recentRecords" :key="item.id" class="record-item tight-record">
               <div class="record-item-main">
                 <strong>{{ item.questionTitle }}</strong>
-                <p>#{{ item.id }} · {{ formatSubmittedAt(item.submittedAt) }}</p>
+                <p>#{{ item.id }} · {{ formatDateTime(item.submittedAt) }}</p>
               </div>
               <RouterLink
                 :to="{ path: '/review', query: { recordId: String(item.id) } }"

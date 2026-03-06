@@ -28,3 +28,11 @@ export function getStoredUser() {
 export function getStoredToken() {
   return localStorage.getItem(TOKEN_KEY) || ''
 }
+
+export function isAuthenticated() {
+  return Boolean(getStoredUser() && getStoredToken())
+}
+
+export function isAdminUser(user = getStoredUser()) {
+  return user?.role === 'ADMIN'
+}

@@ -2,21 +2,29 @@
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { RouterLink, RouterView, useRoute, useRouter } from 'vue-router'
 import { getHealth } from '@/api/common'
-import { clearAuth, getStoredUser } from '@/utils/auth'
+import { clearAuth, getStoredUser, isAdminUser } from '@/utils/auth'
 
 const router = useRouter()
 const route = useRoute()
 const user = ref(getStoredUser())
-const healthText = ref('Backend checking')
+const healthText = ref('后端检测中')
 const healthClass = ref('status-checking')
 
-const navItems = [
-  { label: '首页', to: '/', match: '/' },
-  { label: '刷题页', to: '/practice', match: '/practice' },
-  { label: 'AI 点评', to: '/review', match: '/review' },
-  { label: '学习进度', to: '/progress', match: '/progress' },
-  { label: '用户中心', to: '/profile', match: '/profile' },
-]
+const navItems = computed(() => {
+  const items = [
+    { label: '首页', to: '/', match: '/' },
+    { label: '刷题页', to: '/practice', match: '/practice' },
+    { label: 'AI 点评', to: '/review', match: '/review' },
+    { label: '学习进度', to: '/progress', match: '/progress' },
+    { label: '用户中心', to: '/profile', match: '/profile' },
+  ]
+
+  if (isAdminUser(user.value)) {
+    items.push({ label: '题库管理', to: '/admin/questions', match: '/admin/questions' })
+  }
+
+  return items
+})
 
 function refreshUser() {
   user.value = getStoredUser()
@@ -54,6 +62,13 @@ const userName = computed(() => {
   return user.value.nickname || user.value.username
 })
 
+const userStatusText = computed(() => {
+  if (!user.value) {
+    return '可先浏览页面'
+  }
+  return isAdminUser(user.value) ? '管理员会话' : '已登录会话'
+})
+
 onMounted(() => {
   loadHealth()
   window.addEventListener('auth-changed', refreshUser)
@@ -76,7 +91,7 @@ onBeforeUnmount(() => {
       <div class="brand-block">
         <div class="brand-mark">AI</div>
         <div>
-          <p class="eyebrow">Interview Workspace</p>
+          <p class="eyebrow">面试训练工作台</p>
           <h1 class="brand-title">AI 面试刷题平台</h1>
         </div>
       </div>
@@ -99,7 +114,7 @@ onBeforeUnmount(() => {
           <span class="user-avatar">{{ userName.slice(0, 1).toUpperCase() }}</span>
           <div>
             <strong>{{ userName }}</strong>
-            <small>{{ user ? '已登录会话' : '可先浏览页面' }}</small>
+            <small>{{ userStatusText }}</small>
           </div>
         </div>
         <div class="action-row">

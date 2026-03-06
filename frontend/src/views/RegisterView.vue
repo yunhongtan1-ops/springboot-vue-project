@@ -21,7 +21,7 @@ async function handleRegister() {
 
   try {
     await register(form)
-    successMessage.value = '注册成功，准备跳转到登录页。'
+    successMessage.value = '注册成功，正在跳转到登录页。'
     window.setTimeout(() => {
       router.push('/login')
     }, 900)
@@ -36,31 +36,30 @@ async function handleRegister() {
 <template>
   <div class="auth-layout">
     <section class="auth-aside panel-surface">
-      <p class="eyebrow">Create Account</p>
-      <h2>创建你的训练身份</h2>
+      <p class="eyebrow">创建账号</p>
+      <h2>建立你的训练身份</h2>
       <p class="hero-text">
-        当前注册逻辑仍然走现有后端接口，注册完成后即可用新账号进入整套深色工作台页面。
+        注册完成后即可开始提交答案、查看 AI 点评，并在学习进度里沉淀自己的练习轨迹。
       </p>
       <div class="auth-points">
         <div class="auth-point">
-          <strong>Tech</strong>
-          <span>Vue 3 + Vite + Router + Axios</span>
+          <strong>01</strong>
+          <span>保存个人练习记录，后续可持续回看。</span>
         </div>
         <div class="auth-point">
-          <strong>UI</strong>
-          <span>深蓝灰背景 + 蓝紫强调色 + 高可读排版</span>
+          <strong>02</strong>
+          <span>提交答案后自动进入复盘链路。</span>
         </div>
         <div class="auth-point">
-          <strong>Flow</strong>
-          <span>首页 / 刷题 / 点评 / 进度 / 用户中心</span>
+          <strong>03</strong>
+          <span>通过进度页观察最近 7 天的训练节奏。</span>
         </div>
       </div>
     </section>
 
     <section class="auth-panel panel-surface">
-      <p class="eyebrow">Auth</p>
+      <p class="eyebrow">新用户</p>
       <h2>注册</h2>
-      <p class="section-note">调用接口：POST /api/auth/register</p>
 
       <form class="auth-form" @submit.prevent="handleRegister">
         <label class="editor-field">

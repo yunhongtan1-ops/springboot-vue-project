@@ -9,13 +9,33 @@ const errorMessage = ref('')
 const questions = ref([])
 const currentUser = ref(getStoredUser())
 
+const typeLabels = {
+  ALGORITHM: '算法题',
+  INTERVIEW: '面试题',
+  SYSTEM_DESIGN: '系统设计',
+}
+
+const difficultyLabels = {
+  EASY: '简单',
+  MEDIUM: '中等',
+  HARD: '困难',
+}
+
 const userLabel = computed(() => {
   if (!currentUser.value) {
-    return '当前未登录，也可以直接查看题目。'
+    return '当前未登录，也可以先浏览题目内容。'
   }
 
   return `当前登录用户：${currentUser.value.nickname || currentUser.value.username}`
 })
+
+function formatType(value) {
+  return typeLabels[value] || value || '未分类'
+}
+
+function formatDifficulty(value) {
+  return difficultyLabels[value] || value || '未知'
+}
 
 async function loadQuestions() {
   errorMessage.value = ''
@@ -40,9 +60,9 @@ onMounted(() => {
     <div class="page-header">
       <div>
         <h2>题目列表</h2>
-        <p class="page-desc">调用接口：<code>GET /api/questions</code></p>
+        <p class="page-desc">按顺序浏览当前题库，选择后可进入详情页。</p>
       </div>
-      <button type="button" class="small-button" @click="loadQuestions" :disabled="loading">刷新</button>
+      <button type="button" class="small-button" :disabled="loading" @click="loadQuestions">刷新</button>
     </div>
 
     <p class="info-text">{{ userLabel }}</p>
@@ -54,8 +74,8 @@ onMounted(() => {
         <h3>{{ question.title }}</h3>
         <p>{{ question.content }}</p>
         <div class="question-meta">
-          <span>类型：{{ question.type }}</span>
-          <span>难度：{{ question.difficulty }}</span>
+          <span>类型：{{ formatType(question.type) }}</span>
+          <span>难度：{{ formatDifficulty(question.difficulty) }}</span>
         </div>
         <RouterLink :to="`/questions/${question.id}`" class="detail-link">查看详情</RouterLink>
       </div>

@@ -9,14 +9,14 @@ import { featureCards, homeMetrics, workflowSteps } from '@/mock/platformData'
   <div class="page-stack">
     <section class="hero-surface panel-surface">
       <div class="hero-copy">
-        <p class="eyebrow">LeetCode + CodeSignal + AI Interview</p>
-        <h2>更适合刷题、表达和复盘的现代化面试工作台</h2>
+        <p class="eyebrow">刷题、表达、复盘一体化</p>
+        <h2>把练习、提交和 AI 反馈放在同一个工作台</h2>
         <p class="hero-text">
-          题目阅读、答题组织、AI 点评和学习进度被整理进统一界面，降低切换成本，适合长时间训练。
+          从题目浏览、正式作答到复盘改进，整条训练链路都集中在一处，适合持续练习和回看历史记录。
         </p>
         <div class="hero-actions">
           <RouterLink to="/practice" class="button primary-button">开始刷题</RouterLink>
-          <RouterLink to="/review" class="button ghost-button">查看点评样例</RouterLink>
+          <RouterLink to="/review" class="button ghost-button">查看复盘</RouterLink>
         </div>
       </div>
 
@@ -25,17 +25,17 @@ import { featureCards, homeMetrics, workflowSteps } from '@/mock/platformData'
           <span class="code-dot red"></span>
           <span class="code-dot yellow"></span>
           <span class="code-dot green"></span>
-          <code>Interview Workspace Preview</code>
+          <code>练习面板预览</code>
         </div>
         <div class="preview-block">
-          <p>Question</p>
+          <p>当前题目</p>
           <strong>Two Sum</strong>
-          <small>HashMap · O(n) · 高频热身题</small>
+          <small>哈希表思路，适合作为热身题快速进入状态。</small>
         </div>
         <div class="preview-block align-right">
-          <p>AI Score</p>
+          <p>点评得分</p>
           <strong>86 / 100</strong>
-          <small>表达结构清晰，复杂度还能更完整</small>
+          <small>结构完整，表达顺序清晰，还可以补足复杂度取舍。</small>
         </div>
       </div>
     </section>
@@ -53,9 +53,9 @@ import { featureCards, homeMetrics, workflowSteps } from '@/mock/platformData'
 
     <section class="content-grid two-cols">
       <SectionCard
-        eyebrow="Core Modules"
-        title="平台核心能力"
-        description="页面结构先搭完整，后续可以继续把 AI 和练习接口逐步接进来。"
+        eyebrow="核心模块"
+        title="当前平台能力"
+        description="围绕刷题、提交、点评和进度统计，已经形成一条连续训练流程。"
       >
         <div class="feature-grid">
           <article v-for="feature in featureCards" :key="feature.title" class="feature-card">
@@ -67,9 +67,9 @@ import { featureCards, homeMetrics, workflowSteps } from '@/mock/platformData'
       </SectionCard>
 
       <SectionCard
-        eyebrow="Workflow"
-        title="推荐使用路径"
-        description="先刷题，再看点评，最后回到进度页复盘。"
+        eyebrow="使用路径"
+        title="推荐训练节奏"
+        description="按这条路径使用，体验会更完整。"
       >
         <div class="workflow-list">
           <article v-for="item in workflowSteps" :key="item.step" class="workflow-item">
